@@ -1,0 +1,34 @@
+name: FSMPBank
+version: '${project.version}'
+main: ru.fsmp.bank.FSMPBank
+api-version: '1.21'
+authors: [F-SMP]
+description: Банковская система F-SMP — счета, карты, переводы, покупки, корпоративные счета (ИП), банкиры-банкоматы.
+website: https://fsmp
+
+commands:
+  bank:
+    description: Основная команда банка F-SMP
+    usage: /bank help
+    aliases: [b, банк]
+  bankadmin:
+    description: Администрирование банка (назначение банкиров и т.п.)
+    usage: /bankadmin help
+    aliases: [ba]
+
+permissions:
+  fsmpbank.use:
+    description: Базовый доступ к банку (счёт, карты, переводы)
+    default: true
+  fsmpbank.sign.create:
+    description: Возможность создавать платёжные таблички [Bank]
+    default: true
+  fsmpbank.corp.create:
+    description: Возможность открывать корпоративные счета (ИП)
+    default: true
+  fsmpbank.banker:
+    description: Роль банкира (банкомат) — пополнение и снятие средств игрокам
+    default: op
+  fsmpbank.admin:
+    description: Полный административный доступ к банку
+    default: op
