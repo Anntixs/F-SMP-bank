@@ -17,7 +17,7 @@ public class GUIListener implements Listener {
 
     @EventHandler
     public void onClick(InventoryClickEvent event) {
-        Inventory top = event.getView().getTopInventory();
+        Inventory top = event.getInventory();
         InventoryHolder holder = top.getHolder();
         if (!(holder instanceof BankMenu menu)) {
             return;
@@ -37,7 +37,7 @@ public class GUIListener implements Listener {
 
     @EventHandler
     public void onDrag(InventoryDragEvent event) {
-        if (event.getView().getTopInventory().getHolder() instanceof BankMenu) {
+        if (event.getInventory().getHolder() instanceof BankMenu) {
             event.setCancelled(true);
         }
     }
