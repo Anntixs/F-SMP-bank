@@ -76,7 +76,7 @@ public class SignListener implements Listener {
         event.setLine(1, Lang.color("&0" + rawNumber));
         event.setLine(2, amount > 0 ? Lang.color("&2" + plugin.lang().money(amount)) : Lang.color("&8Сумма: любая"));
         String label = event.getLine(3) == null ? "" : event.getLine(3).trim();
-        event.setLine(3, Lang.color(label.isEmpty() ? "&8ЛКМ/ПКМ — оплатить" : "&0" + label));
+        event.setLine(3, Lang.color(label.isEmpty() ? "&8ПКМ — оплатить" : "&0" + label));
 
         String targetName = target.isCorporate() && !target.getName().isEmpty()
                 ? target.getName() : ("счёт " + rawNumber);
@@ -85,7 +85,9 @@ public class SignListener implements Listener {
 
     @EventHandler
     public void onInteract(PlayerInteractEvent event) {
-        if (event.getAction() != Action.RIGHT_CLICK_BLOCK && event.getAction() != Action.LEFT_CLICK_BLOCK) {
+        // Только правый клик открывает оплату. Левый не трогаем — иначе табличку
+        // нельзя было бы разбить в выживании.
+        if (event.getAction() != Action.RIGHT_CLICK_BLOCK) {
             return;
         }
         Block block = event.getClickedBlock();
