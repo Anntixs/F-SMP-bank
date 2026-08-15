@@ -12,7 +12,7 @@ import ru.fsmp.bank.util.Lang;
 import java.util.List;
 
 /**
- * Список корпоративных счетов (ИП) игрока.
+ * Список корпоративных счетов (ИП) игрока. Открытие — через ввод названия в чат.
  */
 public class CorpMenu extends BankMenu {
 
@@ -44,16 +44,14 @@ public class CorpMenu extends BankMenu {
                     "&7Роль: " + (owner ? "&6владелец" : "&bсотрудник"),
                     "&7Сотрудников: &e" + account.getMembers().size(),
                     "",
-                    "&8Пополнить: /bank corp deposit " + account.getNumber() + " <сумма>",
-                    "&8Снять: /bank corp withdraw " + account.getNumber() + " <сумма>"));
+                    "&eНажми, чтобы открыть"));
             slot++;
         }
 
         inventory.setItem(22, Items.of(Material.WRITABLE_BOOK, "&2Открыть новый ИП",
-                "&7Стоимость открытия: &e"
-                        + lang.money(plugin.bank().getCorpOpenCost()),
+                "&7Стоимость открытия: &e" + lang.money(plugin.bank().getCorpOpenCost()),
                 "",
-                "&eКоманда: /bank corp create <название>"));
+                "&eНажми и введи название в чат"));
         inventory.setItem(26, Items.of(Material.ARROW, "&7Назад"));
     }
 
@@ -64,20 +62,48 @@ public class CorpMenu extends BankMenu {
             return;
         }
         if (slot == 22) {
-            player.closeInventory();
-            player.sendMessage(Lang.color("&7Чтобы открыть ИП, введи: &e/bank corp create <название>"));
+            promptCreate(player);
             return;
         }
         if (shown != null && slot >= 10 && slot <= 16) {
             int index = slot - 10;
             if (index < shown.size()) {
-                Account account = shown.get(index);
-                player.closeInventory();
-                player.sendMessage(Lang.color("&aИП &6" + account.getName()
-                        + " &7— номер счёта: &e" + account.getNumber()));
-                player.sendMessage(Lang.color("&7Скидывать деньги сюда: &e/bank pay "
-                        + account.getNumber() + " <сумма>"));
+                new CorpAccountMenu(plugin, shown.get(index).getNumber()).open(player);
             }
         }
+    }
+
+    private void promptCreate(Player player) {
+        Lang lang = plugin.lang();
+        if (!player.hasPermission("fsmpbank.corp.create")) {
+            player.sendMessage(lang.msg("no-permission"));
+            return;
+        }
+        if (plugin.bank().countCorporate(player.getUniqueId()) >= plugin.bank().getMaxCorpPerPlayer()) {
+            player.sendMessage(lang.msg("corp-limit", "max", String.valueOf(plugin.bank().getMaxCorpPerPlayer())));
+            return;
+        }
+        player.closeInventory();
+        player.sendMessage(Lang.color("&eВведи название ИП в чат &7(или «отмена»)&e:"));
+        plugin.prompts().await(player.getUniqueId(), name -> {
+            Account personal = plugin.bank().getPersonalAccount(player.getUniqueId());
+            if (personal == null) {
+                player.sendMessage(lang.msg("no-account"));
+                return;
+            }
+            double cost = plugin.bank().getCorpOpenCost();
+            if (cost > 0 && !personal.has(cost)) {
+                player.sendMessage(lang.msg("not-enough-money"));
+                return;
+            }
+            String trimmed = name.length() > 32 ? name.substring(0, 32) : name;
+            if (cost > 0) {
+                personal.withdraw(cost);
+            }
+            Account corp = plugin.bank().openCorporateAccount(player.getUniqueId(), trimmed);
+            plugin.bank().save();
+            player.sendMessage(lang.msg("corp-created", "name", trimmed, "number", corp.getNumber()));
+            new CorpMenu(plugin).open(player);
+        });
     }
 }

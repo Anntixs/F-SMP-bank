@@ -1,6 +1,7 @@
 package ru.fsmp.bank.util;
 
 import org.bukkit.ChatColor;
+import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 
 import java.text.DecimalFormat;
@@ -16,6 +17,7 @@ public class Lang {
     private String prefix;
     private String currencySymbol;
     private String currencyName;
+    private Material currencyMaterial;
 
     private static final DecimalFormat MONEY_FORMAT;
 
@@ -33,8 +35,16 @@ public class Lang {
     public void reload(FileConfiguration config) {
         this.config = config;
         this.prefix = color(config.getString("messages.prefix", "&8[&6Банк&8] &7"));
-        this.currencySymbol = config.getString("currency.symbol", "⛃");
-        this.currencyName = config.getString("currency.name", "коинов");
+        this.currencySymbol = config.getString("currency.symbol", "АР");
+        this.currencyName = config.getString("currency.name", "алмазная руда");
+        Material material = Material.DIAMOND_ORE;
+        String rawMaterial = config.getString("currency.material", "DIAMOND_ORE");
+        try {
+            material = Material.valueOf(rawMaterial.toUpperCase());
+        } catch (IllegalArgumentException ignored) {
+            // оставляем алмазную руду по умолчанию
+        }
+        this.currencyMaterial = material;
     }
 
     /** Возвращает готовое сообщение по ключу с подстановками (пары ключ/значение). */
@@ -65,6 +75,10 @@ public class Lang {
 
     public String getCurrencySymbol() {
         return currencySymbol;
+    }
+
+    public Material getCurrencyMaterial() {
+        return currencyMaterial;
     }
 
     public static String color(String text) {

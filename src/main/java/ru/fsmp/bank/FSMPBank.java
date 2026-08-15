@@ -3,9 +3,11 @@ package ru.fsmp.bank;
 import org.bukkit.plugin.java.JavaPlugin;
 import ru.fsmp.bank.command.BankAdminCommand;
 import ru.fsmp.bank.command.BankCommand;
+import ru.fsmp.bank.listener.ChatListener;
 import ru.fsmp.bank.listener.GUIListener;
 import ru.fsmp.bank.listener.SignListener;
 import ru.fsmp.bank.manager.BankManager;
+import ru.fsmp.bank.manager.PromptManager;
 import ru.fsmp.bank.util.Lang;
 
 import java.util.Objects;
@@ -23,6 +25,7 @@ import java.util.Objects;
 public final class FSMPBank extends JavaPlugin {
 
     private BankManager bank;
+    private PromptManager prompts;
     private Lang lang;
     private int autosaveTaskId = -1;
 
@@ -33,6 +36,7 @@ public final class FSMPBank extends JavaPlugin {
         this.lang = new Lang(getConfig());
         this.bank = new BankManager(this);
         this.bank.load();
+        this.prompts = new PromptManager();
 
         BankCommand bankCommand = new BankCommand(this);
         Objects.requireNonNull(getCommand("bank")).setExecutor(bankCommand);
@@ -44,6 +48,7 @@ public final class FSMPBank extends JavaPlugin {
 
         getServer().getPluginManager().registerEvents(new GUIListener(), this);
         getServer().getPluginManager().registerEvents(new SignListener(this), this);
+        getServer().getPluginManager().registerEvents(new ChatListener(this), this);
 
         // Автосохранение каждые 5 минут (6000 тиков)
         this.autosaveTaskId = getServer().getScheduler().runTaskTimer(this,
@@ -72,6 +77,10 @@ public final class FSMPBank extends JavaPlugin {
 
     public BankManager bank() {
         return bank;
+    }
+
+    public PromptManager prompts() {
+        return prompts;
     }
 
     public Lang lang() {
