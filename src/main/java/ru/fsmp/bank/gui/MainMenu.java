@@ -53,11 +53,6 @@ public class MainMenu extends BankMenu {
                 "",
                 "&eВыбрать получателя"));
 
-        inventory.setItem(13, Items.of(Material.CHEST, "&2Банкомат",
-                "&7Внести или снять " + lang.getCurrencyName() + " (АР).",
-                "",
-                "&eОткрыть банкомат"));
-
         inventory.setItem(14, Items.of(Material.EMERALD, "&aИП (корп. счета)",
                 "&7Твоих счетов: &e" + corpCount,
                 "",
@@ -102,7 +97,6 @@ public class MainMenu extends BankMenu {
         switch (slot) {
             case 11 -> new CardMenu(plugin).open(player);
             case 12 -> TransferMenu.open(plugin, player);
-            case 13 -> new AtmMenu(plugin).open(player);
             case 14 -> new CorpMenu(plugin).open(player);
             case 15 -> new HistoryMenu(plugin).open(player);
             case 16 -> {
