@@ -5,6 +5,8 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import ru.fsmp.bank.FSMPBank;
 import ru.fsmp.bank.model.Account;
+import ru.fsmp.bank.model.Card;
+import ru.fsmp.bank.model.PaymentSource;
 
 import java.io.File;
 import java.io.IOException;
@@ -33,7 +35,7 @@ public class BankManager {
 
     private final Map<String, Account> accountsByNumber = new HashMap<>();
     private final Map<UUID, String> personalByOwner = new HashMap<>();
-    private final Map<String, String> cardIndex = new HashMap<>();   // номер карты -> номер счёта
+    private final Map<String, Card> cards = new HashMap<>();          // номер карты -> карта
     private final Set<UUID> bankers = new HashSet<>();
 
     private File dataFile;
@@ -66,7 +68,7 @@ public class BankManager {
         reloadSettings();
         accountsByNumber.clear();
         personalByOwner.clear();
-        cardIndex.clear();
+        cards.clear();
         bankers.clear();
 
         dataFile = new File(plugin.getDataFolder(), "data.yml");
@@ -113,17 +115,49 @@ public class BankManager {
                 }
             }
         }
+
+        // Детали карт (лимиты, держатель, заморозка)
+        ConfigurationSection cardsSec = data.getConfigurationSection("cards");
+        if (cardsSec != null) {
+            for (String cardNumber : cardsSec.getKeys(false)) {
+                ConfigurationSection sec = cardsSec.getConfigurationSection(cardNumber);
+                if (sec == null) {
+                    continue;
+                }
+                try {
+                    String accountNumber = sec.getString("account");
+                    if (accountNumber == null || !accountsByNumber.containsKey(accountNumber)) {
+                        continue;
+                    }
+                    UUID holder = UUID.fromString(sec.getString("holder"));
+                    Card card = new Card(cardNumber, accountNumber, holder);
+                    card.setDailyLimit(sec.getDouble("limit", 0.0));
+                    card.setSpentToday(sec.getDouble("spent", 0.0));
+                    card.setDay(sec.getLong("day", card.getDay()));
+                    card.setFrozen(sec.getBoolean("frozen", false));
+                    cards.put(cardNumber, card);
+                } catch (Exception ex) {
+                    plugin.getLogger().log(Level.WARNING, "Не удалось загрузить карту " + cardNumber, ex);
+                }
+            }
+        }
+
+        // Совместимость: старые карты без деталей (v1.x) — держатель = владелец, без лимита
+        for (Account account : accountsByNumber.values()) {
+            for (String cardNumber : account.getCards()) {
+                cards.computeIfAbsent(cardNumber,
+                        n -> new Card(n, account.getNumber(), account.getOwner()));
+            }
+        }
+
         plugin.getLogger().info("Загружено счетов: " + accountsByNumber.size()
-                + ", банкиров: " + bankers.size());
+                + ", карт: " + cards.size() + ", банкиров: " + bankers.size());
     }
 
     private void register(Account account) {
         accountsByNumber.put(account.getNumber(), account);
         if (account.getType() == Account.Type.PERSONAL) {
             personalByOwner.put(account.getOwner(), account.getNumber());
-        }
-        for (String card : account.getCards()) {
-            cardIndex.put(card, account.getNumber());
         }
     }
 
@@ -152,6 +186,16 @@ public class BankManager {
             }
             data.set(path + ".members", members);
             data.set(path + ".history", new ArrayList<>(account.getHistory()));
+        }
+
+        for (Card card : cards.values()) {
+            String path = "cards." + card.getNumber();
+            data.set(path + ".account", card.getAccountNumber());
+            data.set(path + ".holder", card.getHolder().toString());
+            data.set(path + ".limit", card.getDailyLimit());
+            data.set(path + ".spent", card.getSpentToday());
+            data.set(path + ".day", card.getDay());
+            data.set(path + ".frozen", card.isFrozen());
         }
 
         try {
@@ -197,27 +241,74 @@ public class BankManager {
         return maxCards;
     }
 
-    /** Выпускает новую карту к личному счёту. null — если достигнут лимит. */
+    /** Выпускает новую карту к счёту (держатель по умолчанию — владелец). null — если достигнут лимит. */
     public String issueCard(Account account) {
         if (account.getCards().size() >= maxCards) {
             return null;
         }
-        String card = generateCardNumber();
-        account.getCards().add(card);
-        cardIndex.put(card, account.getNumber());
-        log(account, "Выпущена карта " + card);
+        String number = generateCardNumber();
+        account.getCards().add(number);
+        cards.put(number, new Card(number, account.getNumber(), account.getOwner()));
+        log(account, "Выпущена карта " + number);
         save();
-        return card;
+        return number;
     }
 
     public boolean removeCard(Account account, String cardNumber) {
         if (account.getCards().remove(cardNumber)) {
-            cardIndex.remove(cardNumber);
+            cards.remove(cardNumber);
             log(account, "Карта " + cardNumber + " удалена");
             save();
             return true;
         }
         return false;
+    }
+
+    public Card getCard(String cardNumber) {
+        return cards.get(cardNumber);
+    }
+
+    /** Карты, выданные игроку (которыми он может платить). */
+    public List<Card> getCardsHeldBy(UUID uuid) {
+        List<Card> result = new ArrayList<>();
+        for (Card card : cards.values()) {
+            if (uuid.equals(card.getHolder()) && accountsByNumber.containsKey(card.getAccountNumber())) {
+                result.add(card);
+            }
+        }
+        return result;
+    }
+
+    public void setCardFrozen(Card card, boolean frozen) {
+        card.setFrozen(frozen);
+        save();
+    }
+
+    public void setCardLimit(Card card, double limit) {
+        card.setDailyLimit(limit);
+        save();
+    }
+
+    public void setCardHolder(Card card, UUID holder) {
+        card.setHolder(holder);
+        save();
+    }
+
+    /** Доступные игроку источники оплаты: личный счёт + выданные ему карты. */
+    public List<PaymentSource> getPaymentSources(UUID uuid) {
+        List<PaymentSource> sources = new ArrayList<>();
+        Account personal = getPersonalAccount(uuid);
+        if (personal != null) {
+            sources.add(new PaymentSource(personal, null));
+        }
+        for (Card card : getCardsHeldBy(uuid)) {
+            Account account = accountsByNumber.get(card.getAccountNumber());
+            // Карту на собственный личный счёт как отдельный источник не показываем
+            if (account != null && (personal == null || !account.getNumber().equals(personal.getNumber()))) {
+                sources.add(new PaymentSource(account, card));
+            }
+        }
+        return sources;
     }
 
     // ------------------------------------------------------------------
@@ -266,8 +357,8 @@ public class BankManager {
     }
 
     public Account getByCard(String cardNumber) {
-        String number = cardIndex.get(cardNumber);
-        return number == null ? null : accountsByNumber.get(number);
+        Card card = cards.get(cardNumber);
+        return card == null ? null : accountsByNumber.get(card.getAccountNumber());
     }
 
     /**
@@ -278,8 +369,8 @@ public class BankManager {
         if (accountsByNumber.containsKey(cleaned)) {
             return Optional.of(accountsByNumber.get(cleaned));
         }
-        if (cardIndex.containsKey(cleaned)) {
-            return Optional.of(accountsByNumber.get(cardIndex.get(cleaned)));
+        if (cards.containsKey(cleaned)) {
+            return Optional.of(accountsByNumber.get(cards.get(cleaned).getAccountNumber()));
         }
         // По имени игрока -> его личный счёт
         org.bukkit.OfflinePlayer offline = org.bukkit.Bukkit.getOfflinePlayerIfCached(raw);
@@ -306,16 +397,34 @@ public class BankManager {
         OK,
         NOT_ENOUGH,
         INVALID_AMOUNT,
-        SAME_ACCOUNT
+        SAME_ACCOUNT,
+        CARD_FROZEN,
+        CARD_LIMIT
     }
 
     /** Перевод между счетами с учётом комиссии. */
     public Result transfer(Account from, Account to, double amount, String note) {
+        return spend(from, null, to, amount, note);
+    }
+
+    /**
+     * Списание со счёта в пользу другого счёта. Если задана карта — проверяются
+     * её заморозка и суточный лимит, а трата учитывается в лимите карты.
+     */
+    public Result spend(Account from, Card card, Account to, double amount, String note) {
         if (amount <= 0) {
             return Result.INVALID_AMOUNT;
         }
         if (from.getNumber().equals(to.getNumber())) {
             return Result.SAME_ACCOUNT;
+        }
+        if (card != null) {
+            if (card.isFrozen()) {
+                return Result.CARD_FROZEN;
+            }
+            if (!card.withinLimit(amount)) {
+                return Result.CARD_LIMIT;
+            }
         }
         double fee = Math.round(amount * transferFee * 100.0) / 100.0;
         double total = amount + fee;
@@ -324,8 +433,12 @@ public class BankManager {
         }
         from.withdraw(total);
         to.deposit(amount);
+        if (card != null) {
+            card.addSpent(amount);
+        }
         String feePart = fee > 0 ? " (комиссия " + fee + ")" : "";
-        log(from, "→ " + to.getNumber() + " -" + amount + feePart + (note != null ? " " + note : ""));
+        String cardPart = card != null ? " картой " + card.getNumber() : "";
+        log(from, "→ " + to.getNumber() + " -" + amount + feePart + cardPart + (note != null ? " " + note : ""));
         log(to, "← " + from.getNumber() + " +" + amount + (note != null ? " " + note : ""));
         save();
         return Result.OK;
@@ -408,7 +521,7 @@ public class BankManager {
                 sb.append(ThreadLocalRandom.current().nextInt(0, 10));
             }
             number = sb.toString();
-        } while (accountsByNumber.containsKey(number) || cardIndex.containsKey(number));
+        } while (accountsByNumber.containsKey(number) || cards.containsKey(number));
         return number;
     }
 
@@ -420,7 +533,7 @@ public class BankManager {
                 sb.append(ThreadLocalRandom.current().nextInt(0, 10));
             }
             number = sb.toString();
-        } while (cardIndex.containsKey(number) || accountsByNumber.containsKey(number));
+        } while (cards.containsKey(number) || accountsByNumber.containsKey(number));
         return number;
     }
 

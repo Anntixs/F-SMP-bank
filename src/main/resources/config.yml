@@ -47,6 +47,8 @@ messages:
   card-created: "&aВыпущена новая карта: &e%number%"
   card-limit: "&cДостигнут лимит карт (%max%)."
   card-removed: "&aКарта &e%number% &aудалена."
+  card-frozen: "&cЭта карта заморожена."
+  card-over-limit: "&cПревышен суточный лимит карты."
   not-enough-money: "&cНедостаточно средств на счёте."
   transfer-sent: "&aПеревод &e%amount% &aна счёт &6%target% &aвыполнен."
   transfer-received: "&aПоступление &e%amount% &aот &6%from%&a."
